@@ -31,7 +31,9 @@ class AdminHomeScreen extends StatelessWidget {
               _buildQuickAccessCard(Icons.calendar_today, 'Appointments', 1),
               _buildQuickAccessCard(Icons.people, 'Patients', 2),
               _buildQuickAccessCard(Icons.medical_services, 'Doctors', 3),
-              _buildQuickAccessCard(Icons.analytics, 'Reports', 4),
+              _buildQuickAccessCard(Icons.assignment, 'Requests', 4),
+              _buildQuickAccessCard(Icons.design_services, 'Services', 5),
+              _buildQuickAccessCard(Icons.analytics, 'Reports', 6)
             ],
           ),
         ],
