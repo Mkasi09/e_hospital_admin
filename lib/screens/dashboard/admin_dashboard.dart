@@ -1,5 +1,6 @@
 import 'package:e_hospotal_admin/screens/dashboard/reports/reports.dart';
 import 'package:e_hospotal_admin/screens/dashboard/service_requests/service_requests_management.dart';
+import 'package:e_hospotal_admin/screens/dashboard/service_requests/services.dart';
 import 'package:flutter/material.dart';
 import 'appointments/appointments_management.dart';
 import 'doctors/doctors_management.dart';
@@ -24,14 +25,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Move pages here so handleNavigation is in scope
     final List<Widget> pages = [
       AdminHomeScreen(onNavigate: handleNavigation),
       const AppointmentsScreen(),
       const PatientsScreen(),
       const DoctorsScreen(),
-      const ReportsScreen(),
       const ServiceRequestsScreen(),
+      const AvailableServicesScreen(),
+      const ReportsScreen(),
     ];
 
     return Scaffold(
@@ -77,12 +78,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 label: Text('Doctors'),
               ),
               NavigationRailDestination(
-                icon: Icon(Icons.analytics),
-                label: Text('Reports'),
-              ),
-              NavigationRailDestination(
                 icon: Icon(Icons.assignment),
                 label: Text('Requests'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.design_services),
+                label: Text('Services'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.analytics),
+                label: Text('Reports'),
               ),
             ],
           ),
