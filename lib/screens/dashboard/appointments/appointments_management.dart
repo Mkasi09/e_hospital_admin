@@ -1,280 +1,221 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class AppointmentsScreen extends StatefulWidget {
+class AppointmentsScreen extends StatelessWidget {
   const AppointmentsScreen({super.key});
 
-  @override
-  State<AppointmentsScreen> createState() => _AppointmentsScreenState();
-}
-
-class _AppointmentsScreenState extends State<AppointmentsScreen> {
-  String? selectedDoctor;
-  String? selectedStatus;
-  DateTime? startDate;
-  DateTime? endDate;
-
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  List<String> doctors = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchDoctors();
+  String getStatusText(String status) {
+    switch (status) {
+      case "confirmed":
+        return "Confirmed";
+      case "pending":
+        return "Pending";
+      case "completed":
+        return "Completed";
+      case "in-progress":
+        return "In Progress";
+      case "cancelled":
+        return "Cancelled";
+      default:
+        return "Unknown";
+    }
   }
 
-  Future<void> _fetchDoctors() async {
-    final query = await FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'doctor')
-        .get();
-
-    setState(() {
-      doctors = query.docs
-          .map((doc) => doc['name'] as String)
-          .toSet()
-          .toList(); // Ensure uniqueness
-    });
+  Color getStatusColor(String status) {
+    switch (status) {
+      case "confirmed":
+        return Colors.green;
+      case "pending":
+        return Colors.orange;
+      case "completed":
+        return Colors.grey;
+      case "in-progress":
+        return Colors.blue;
+      case "cancelled":
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
   }
 
-  void _updateStatus(DocumentReference docRef, String newStatus, BuildContext context) async {
-    Navigator.pop(context); // Close sheet
-    await docRef.update({'status': newStatus});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Updated to "$newStatus"')));
+  /// 🔹 Update status in Firestore
+  Future<void> updateStatus(String docId, String newStatus) async {
+    await FirebaseFirestore.instance
+        .collection("appointments")
+        .doc(docId)
+        .update({"status": newStatus});
   }
 
-  Stream<QuerySnapshot> _getFilteredStream() {
-    Query query = FirebaseFirestore.instance.collection('appointments');
-
-    if (selectedDoctor != null && selectedDoctor!.isNotEmpty) {
-      query = query.where('doctor', isEqualTo: selectedDoctor);
-    }
-    if (selectedStatus != null && selectedStatus!.isNotEmpty) {
-      query = query.where('status', isEqualTo: selectedStatus);
-    }
-    if (startDate != null) {
-      query = query.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate!));
-    }
-    if (endDate != null) {
-      query = query.where('date', isLessThanOrEqualTo: Timestamp.fromDate(endDate!));
-    }
-
-    return query.orderBy('date').snapshots();
+  /// 🔹 Show dialog with status options
+  void showManageDialog(
+    BuildContext context,
+    String docId,
+    String currentStatus,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text("Manage Appointment"),
+            content: const Text("Select a new status for this appointment:"),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  updateStatus(docId, "confirmed");
+                  Navigator.pop(ctx);
+                },
+                child: const Text("Confirm"),
+              ),
+              TextButton(
+                onPressed: () {
+                  updateStatus(docId, "completed");
+                  Navigator.pop(ctx);
+                },
+                child: const Text("Complete"),
+              ),
+              TextButton(
+                onPressed: () {
+                  updateStatus(docId, "cancelled");
+                  Navigator.pop(ctx);
+                },
+                child: const Text("Cancel"),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Close"),
+              ),
+            ],
+          ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: _scaffoldKey,
-      endDrawer: Drawer(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const Text('Filters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: selectedDoctor,
-              decoration: const InputDecoration(labelText: 'Doctor'),
-              items: doctors.map((docName) {
-                return DropdownMenuItem(value: docName, child: Text(docName));
-              }).toList(),
-              onChanged: (val) => setState(() => selectedDoctor = val),
-            ),
-
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: selectedStatus,
-              decoration: const InputDecoration(labelText: 'Status'),
-              items: const [
-                DropdownMenuItem(value: 'pending', child: Text('Pending')),
-                DropdownMenuItem(value: 'confirmed', child: Text('Confirmed')),
-                DropdownMenuItem(value: 'cancelled', child: Text('Cancelled')),
-              ],
-              onChanged: (val) => setState(() => selectedStatus = val),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              title: const Text('Start Date'),
-              subtitle: Text(startDate?.toLocal().toString().split(' ')[0] ?? 'Select'),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: startDate ?? DateTime.now(),
-                  firstDate: DateTime(2023),
-                  lastDate: DateTime(2026),
-                );
-                if (picked != null) setState(() => startDate = picked);
-              },
-            ),
-            ListTile(
-              title: const Text('End Date'),
-              subtitle: Text(endDate?.toLocal().toString().split(' ')[0] ?? 'Select'),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: endDate ?? DateTime.now(),
-                  firstDate: DateTime(2023),
-                  lastDate: DateTime(2026),
-                );
-                if (picked != null) setState(() => endDate = picked);
-              },
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context), // close drawer
-              child: const Text('Apply Filters'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  selectedDoctor = null;
-                  selectedStatus = null;
-                  startDate = null;
-                  endDate = null;
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Clear Filters'),
-            ),
-          ],
-        ),
-      ),
       appBar: AppBar(
-        title: const Text('Appointments (Admin)'),
+        title: const Text("Appointments"),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+          TextButton.icon(
+            onPressed: () {
+              // TODO: Open appointment scheduling screen
+            },
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              "Schedule",
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
-      body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: _getFilteredStream(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return const Center(child: Text('No appointments found.'));
-            }
+      body: StreamBuilder<QuerySnapshot>(
+        stream:
+            FirebaseFirestore.instance
+                .collection("appointments")
+                .orderBy("date") // using timestamp field for sorting
+                .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("No appointments found."));
+          }
 
-            final appointments = snapshot.data!.docs;
+          final appointments = snapshot.data!.docs;
 
-            return ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: appointments.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final doc = appointments[index];
-                final data = doc.data() as Map<String, dynamic>;
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: appointments.length,
+            itemBuilder: (context, index) {
+              final doc = appointments[index];
+              final appt = doc.data() as Map<String, dynamic>;
+              final docId = doc.id;
 
-                final patient = data['patientName'] ?? 'Unknown';
-                final doctor = data['doctor'] ?? 'Unknown';
-                final time = data['time'] ?? '';
-                final status = data['status'] ?? 'pending';
-
-                final dateTimestamp = data['date'];
-                final date = dateTimestamp is Timestamp
-                    ? dateTimestamp.toDate()
-                    : DateTime.tryParse(dateTimestamp.toString());
-
-                final dateStr = date != null
-                    ? '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}'
-                    : 'Invalid date';
-
-                return ListTile(
-                  title: Text('$patient - $doctor'),
-                  subtitle: Text('$dateStr at $time'),
-                  leading: CircleAvatar(
-                    backgroundColor: status == 'pending'
-                        ? Colors.orange
-                        : status == 'confirmed'
-                        ? Colors.green
-                        : Colors.grey,
-                    radius: 6,
-                  ),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) async {
-                      if (value == 'view') {
-                        showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: const Text('Appointment Details'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Patient: $patient'),
-                                Text('Doctor: $doctor'),
-                                Text('Date: $dateStr'),
-                                Text('Time: $time'),
-                                Text('Status: $status'),
-                                Text('Reason: ${data['reason'] ?? "N/A"}'),
-                                Text('Hospital: ${data['hospital'] ?? "N/A"}'),
-                              ],
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // 🔹 Time + Details
+                    Row(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              appt["time"] ?? "",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Close'),
+                            Text(
+                              "${appt["date"].toDate()}".split(
+                                ".",
+                              )[0], // show readable date
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 16),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "${appt["patientName"]} (${appt["appointmentType"]})",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            Text(
+                              "${appt["doctor"]} • ${appt["hospital"]}",
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    // 🔹 Status + Manage button
+                    Column(
+                      children: [
+                        Chip(
+                          label: Text(getStatusText(appt["status"] ?? "")),
+                          backgroundColor: getStatusColor(
+                            appt["status"] ?? "",
+                          ).withOpacity(0.2),
+                          labelStyle: TextStyle(
+                            color: getStatusColor(appt["status"] ?? ""),
                           ),
-                        );
-                      } else if (value == 'status') {
-                        showModalBottomSheet(
-                          context: context,
-                          builder: (context) => Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Text('Update Status', style: TextStyle(fontSize: 18)),
+                        ),
+                        const SizedBox(height: 6),
+                        OutlinedButton(
+                          onPressed:
+                              () => showManageDialog(
+                                context,
+                                docId,
+                                appt["status"] ?? "",
                               ),
-                              ListTile(
-                                title: const Text('Pending'),
-                                onTap: () => _updateStatus(doc.reference, 'pending', context),
-                              ),
-                              ListTile(
-                                title: const Text('Confirmed'),
-                                onTap: () => _updateStatus(doc.reference, 'confirmed', context),
-                              ),
-                              ListTile(
-                                title: const Text('Cancelled'),
-                                onTap: () => _updateStatus(doc.reference, 'cancelled', context),
-                              ),
-                            ],
-                          ),
-                        );
-                      } else if (value == 'delete') {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            title: const Text('Delete Appointment'),
-                            content: const Text('Are you sure you want to delete this appointment?'),
-                            actions: [
-                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
-                            ],
-                          ),
-                        );
-                        if (confirm == true) await doc.reference.delete();
-                      }
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 'view', child: Text('View')),
-                      PopupMenuItem(value: 'status', child: Text('Change Status')),
-                      PopupMenuItem(value: 'delete', child: Text('Delete')),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
-        ),
+                          child: const Text("Manage"),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
