@@ -23,6 +23,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     _fetchDoctors();
   }
 
+  Map<String, String> doctorMap = {}; // name -> id
+
   Future<void> _fetchDoctors() async {
     final query = await FirebaseFirestore.instance
         .collection('users')
@@ -30,12 +32,13 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         .get();
 
     setState(() {
-      doctors = query.docs
-          .map((doc) => doc['name'] as String)
-          .toSet()
-          .toList(); // Ensure uniqueness
+      doctorMap = {
+        for (var doc in query.docs) doc['name']: doc.id
+      };
+      doctors = doctorMap.keys.toList();
     });
   }
+
 
   void _updateStatus(DocumentReference docRef, String newStatus, BuildContext context) async {
     Navigator.pop(context); // Close sheet
@@ -47,8 +50,10 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     Query query = FirebaseFirestore.instance.collection('appointments');
 
     if (selectedDoctor != null && selectedDoctor!.isNotEmpty) {
-      query = query.where('doctor', isEqualTo: selectedDoctor);
+      final selectedDoctorId = doctorMap[selectedDoctor];
+      query = query.where('doctorId', isEqualTo: selectedDoctorId);
     }
+
     if (selectedStatus != null && selectedStatus!.isNotEmpty) {
       query = query.where('status', isEqualTo: selectedStatus);
     }
@@ -59,7 +64,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       query = query.where('date', isLessThanOrEqualTo: Timestamp.fromDate(endDate!));
     }
 
-    return query.orderBy('date').snapshots();
+    return query.snapshots();
   }
 
   @override

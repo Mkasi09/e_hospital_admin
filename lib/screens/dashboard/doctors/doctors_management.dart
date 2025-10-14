@@ -1,9 +1,17 @@
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:e_hospotal_admin/screens/dashboard/doctors/add_doctor.dart';
 import 'package:flutter/material.dart';
 
-class DoctorsScreen extends StatelessWidget {
+class DoctorsScreen extends StatefulWidget {
   const DoctorsScreen({super.key});
+
+  @override
+  State<DoctorsScreen> createState() => _DoctorsScreenState();
+}
+
+class _DoctorsScreenState extends State<DoctorsScreen> {
+  String searchQuery = '';
 
   Stream<QuerySnapshot> getDoctorsStream() {
     return FirebaseFirestore.instance
@@ -11,9 +19,11 @@ class DoctorsScreen extends StatelessWidget {
         .where('role', isEqualTo: 'doctor')
         .snapshots();
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[100],
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -22,8 +32,39 @@ class DoctorsScreen extends StatelessWidget {
             const Text('Doctor Management',
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
+
+            // ✅ Rounded Search Bar
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: TextField(
+                decoration: const InputDecoration(
+                  hintText: 'Search by name or email',
+                  border: InputBorder.none,
+                  prefixIcon: Icon(Icons.search),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    searchQuery = value.toLowerCase();
+                  });
+                },
+              ),
+            ),
+
+            const SizedBox(height: 16),
             const _HeaderRow(),
             const SizedBox(height: 8),
+
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: getDoctorsStream(),
@@ -34,7 +75,14 @@ class DoctorsScreen extends StatelessWidget {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final doctors = snapshot.data!.docs;
+
+                  final doctors = snapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final name = data['name']?.toLowerCase() ?? '';
+                    final email = data['email']?.toLowerCase() ?? '';
+                    return name.contains(searchQuery) || email.contains(searchQuery);
+                  }).toList();
+
                   if (doctors.isEmpty) {
                     return const Center(child: Text('No doctors found.'));
                   }
@@ -62,16 +110,20 @@ class DoctorsScreen extends StatelessWidget {
         onPressed: () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const AddDoctorPage(firebaseApiKey: 'AIzaSyAmkucc7_QyTmr6f7oywJdUxhjHXyugKMc')),
+            MaterialPageRoute(
+              builder: (context) => const AddDoctorPage(
+                firebaseApiKey: 'AIzaSyAmkucc7_QyTmr6f7oywJdUxhjHXyugKMc',
+              ),
+            ),
           );
         },
         icon: const Icon(Icons.add),
         label: const Text('Add Doctor'),
       ),
-
     );
   }
 }
+
 
 class _HeaderRow extends StatelessWidget {
   const _HeaderRow({super.key});

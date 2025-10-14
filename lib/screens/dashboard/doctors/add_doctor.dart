@@ -1,8 +1,9 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:lottie/lottie.dart'; // <-- Add this import at the top
+
 
 class AddDoctorPage extends StatefulWidget {
   final String firebaseApiKey;
@@ -13,11 +14,12 @@ class AddDoctorPage extends StatefulWidget {
   State<AddDoctorPage> createState() => _AddDoctorPageState();
 }
 
-class _AddDoctorPageState extends State<AddDoctorPage> {
+class _AddDoctorPageState extends State<AddDoctorPage> with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _specialtyCtrl = TextEditingController();
+  final _licenseCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
 
   bool _loading = false;
@@ -32,8 +34,7 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
   }
 
   Future<void> _fetchHospitals() async {
-    final snapshot =
-    await FirebaseFirestore.instance.collection('hospitals').get();
+    final snapshot = await FirebaseFirestore.instance.collection('hospitals').get();
     setState(() {
       _hospitals = snapshot.docs;
       if (_hospitals.isNotEmpty) {
@@ -52,10 +53,10 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
     final email = _emailCtrl.text.trim();
     final name = _nameCtrl.text.trim();
     final specialty = _specialtyCtrl.text.trim();
+    final license = _licenseCtrl.text.trim();
     final password = _passwordCtrl.text;
 
-    final url =
-        'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${widget.firebaseApiKey}';
+    final url = 'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${widget.firebaseApiKey}';
 
     try {
       final response = await http.post(
@@ -72,36 +73,32 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
 
       if (response.statusCode == 200 && data['localId'] != null) {
         final uid = data['localId'];
-
-        // Get hospital name for reference (optional)
-        final hospitalDoc = _hospitals
-            .firstWhere((doc) => doc.id == _selectedHospitalId);
+        final hospitalDoc = _hospitals.firstWhere((doc) => doc.id == _selectedHospitalId);
         final hospitalName = hospitalDoc['name'] ?? '';
 
-        // Save doctor info in Firestore
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
           'name': name,
           'email': email,
           'role': 'doctor',
           'specialty': specialty,
+          'medicalLicense': license,
           'hospitalId': _selectedHospitalId,
           'hospitalName': hospitalName,
-          'requiresPasswordReset': true, // <-- important
+          'requiresPasswordReset': true,
           'createdAt': FieldValue.serverTimestamp(),
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Doctor user created successfully!')),
+          const SnackBar(content: Text('✅ Doctor user created successfully!')),
         );
 
-        // Clear inputs
         _emailCtrl.clear();
         _nameCtrl.clear();
         _specialtyCtrl.clear();
+        _licenseCtrl.clear();
         _passwordCtrl.clear();
         setState(() {
-          _selectedHospitalId =
-          _hospitals.isNotEmpty ? _hospitals.first.id : null;
+          _selectedHospitalId = _hospitals.isNotEmpty ? _hospitals.first.id : null;
         });
       } else {
         final errMsg = data['error']?['message'] ?? 'Unknown error';
@@ -109,7 +106,7 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        SnackBar(content: Text('❌ Error: $e')),
       );
     } finally {
       setState(() {
@@ -123,6 +120,7 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
     _emailCtrl.dispose();
     _nameCtrl.dispose();
     _specialtyCtrl.dispose();
+    _licenseCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
   }
@@ -130,110 +128,153 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Admin - Add Doctor')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 500),
-            child: _hospitals.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : Form(
-              key: _formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _emailCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Doctor Email',
-                      border: OutlineInputBorder(),
+      appBar: AppBar(
+        title: const Text('🩺 Add Doctor', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blueAccent,
+      ),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        child: _hospitals.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 500),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 🔵 Lottie animation at the top
+                    Lottie.asset(
+                      'docAdd.json',
+                      height: 180,
+                      repeat: true,
                     ),
-                    keyboardType: TextInputType.emailAddress,
-                    validator: (val) {
-                      if (val == null || val.isEmpty) {
-                        return 'Enter doctor email';
-                      }
-                      if (!val.contains('@')) {
-                        return 'Enter valid email';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Doctor Name',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 16),
+
+                    const Text(
+                      '👨‍⚕️ Doctor Information',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
-                    validator: (val) => val == null || val.isEmpty
-                        ? 'Enter doctor name'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _specialtyCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Specialty',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _emailCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Doctor Email',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.email_outlined),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (val) {
+                        if (val == null || val.isEmpty) return 'Enter doctor email';
+                        if (!val.contains('@')) return 'Enter valid email';
+                        return null;
+                      },
                     ),
-                    validator: (val) => val == null || val.isEmpty
-                        ? 'Enter specialty'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _selectedHospitalId,
-                    decoration: const InputDecoration(
-                      labelText: 'Hospital',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Doctor Name',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person_outline),
+                      ),
+                      validator: (val) =>
+                      val == null || val.isEmpty ? 'Enter doctor name' : null,
                     ),
-                    items: _hospitals.map((doc) {
-                      return DropdownMenuItem<String>(
-                        value: doc.id,
-                        child: Text(doc['name'] ?? 'Unnamed Hospital'),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedHospitalId = value;
-                      });
-                    },
-                    validator: (value) =>
-                    value == null ? 'Please select a hospital' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Temporary Password',
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _specialtyCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Specialty',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.medical_services_outlined),
+                      ),
+                      validator: (val) =>
+                      val == null || val.isEmpty ? 'Enter specialty' : null,
                     ),
-                    obscureText: true,
-                    validator: (val) {
-                      if (val == null || val.isEmpty) {
-                        return 'Enter a temporary password';
-                      }
-                      if (val.length < 6) {
-                        return 'Password must be at least 6 characters';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _licenseCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Medical License Number',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                      validator: (val) =>
+                      val == null || val.isEmpty ? 'Enter license number' : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    DropdownButtonFormField<String>(
+                      value: _selectedHospitalId,
+                      decoration: const InputDecoration(
+                        labelText: 'Hospital',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.local_hospital_outlined),
+                      ),
+                      items: _hospitals.map((doc) {
+                        return DropdownMenuItem<String>(
+                          value: doc.id,
+                          child: Text(doc['name'] ?? 'Unnamed Hospital'),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedHospitalId = value;
+                        });
+                      },
+                      validator: (value) =>
+                      value == null ? 'Please select a hospital' : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      controller: _passwordCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Temporary Password',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock_outline),
+                      ),
+                      obscureText: true,
+                      validator: (val) {
+                        if (val == null || val.isEmpty) {
+                          return 'Enter a temporary password';
+                        }
+                        if (val.length < 6) {
+                          return 'Password must be at least 6 characters';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
+                    ElevatedButton.icon(
                       onPressed: _loading ? null : _createDoctorUser,
-                      child: _loading
-                          ? const CircularProgressIndicator(
-                        color: Colors.white,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      icon: const Icon(Icons.add),
+                      label: _loading
+                          ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
                       )
                           : const Text('Create Doctor Account'),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -241,4 +282,5 @@ class _AddDoctorPageState extends State<AddDoctorPage> {
       ),
     );
   }
+
 }

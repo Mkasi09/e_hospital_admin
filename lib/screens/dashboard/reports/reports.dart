@@ -96,7 +96,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         barTouchData: BarTouchData(enabled: true),
                         titlesData: FlTitlesData(
                           leftTitles: AxisTitles(
-                            sideTitles: SideTitles(showTitles: true),
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              interval: 1, // Force steps of 1
+                              getTitlesWidget: (value, meta) {
+                                return Text(
+                                  value.toInt().toString(),
+                                  style: const TextStyle(fontSize: 12),
+                                );
+                              },
+                            ),
                           ),
                           bottomTitles: AxisTitles(
                             sideTitles: SideTitles(
@@ -116,6 +125,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                         gridData: FlGridData(show: true),
                         borderData: FlBorderData(show: false),
+                        minY: 0, // Always start from zero
                         barGroups: List.generate(barSpots.length, (i) {
                           return BarChartGroupData(
                             x: i,
@@ -123,13 +133,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               BarChartRodData(
                                 toY: barSpots[i].value.toDouble(),
                                 color: Colors.blue,
-                                width: 14, // smaller bar width
+                                width: 14,
                                 borderRadius: BorderRadius.circular(4),
                               ),
                             ],
                           );
                         }),
-                      ),
+                      )
+                      ,
                     ),
                   ),
                 );

@@ -1,8 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-class PatientsScreen extends StatelessWidget {
+class PatientsScreen extends StatefulWidget {
   const PatientsScreen({super.key});
+
+  @override
+  State<PatientsScreen> createState() => _PatientsScreenState();
+}
+
+class _PatientsScreenState extends State<PatientsScreen> {
+  String searchQuery = '';
 
   Stream<QuerySnapshot> getPatientsStream() {
     return FirebaseFirestore.instance
@@ -22,8 +29,39 @@ class PatientsScreen extends StatelessWidget {
             const Text('Patient Management',
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
+
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: 'Search by name or email',
+                  border: InputBorder.none,
+                  prefixIcon: Icon(Icons.search),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    searchQuery = value.toLowerCase();
+                  });
+                },
+              ),
+            ),
+
+
+            const SizedBox(height: 16),
             const _HeaderRow(),
             const SizedBox(height: 8),
+
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: getPatientsStream(),
@@ -34,7 +72,14 @@ class PatientsScreen extends StatelessWidget {
                   if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
-                  final patients = snapshot.data!.docs;
+
+                  final patients = snapshot.data!.docs.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final name = data['fullName']?.toLowerCase() ?? '';
+                    final email = data['email']?.toLowerCase() ?? '';
+                    return name.contains(searchQuery) || email.contains(searchQuery);
+                  }).toList();
+
                   if (patients.isEmpty) {
                     return const Center(child: Text('No patients found.'));
                   }
@@ -60,29 +105,19 @@ class PatientsScreen extends StatelessWidget {
     );
   }
 }
-
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({super.key});
+  const _HeaderRow();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        children: const [
-          Expanded(flex: 2, child: Text('Name', style: _headerStyle)),
-          Expanded(flex: 2, child: Text('Email', style: _headerStyle)),
-        ],
-      ),
+    return Row(
+      children: const [
+        Expanded(flex: 1, child: Text('Name', style: TextStyle(fontWeight: FontWeight.bold))),
+        Expanded(flex: 1, child: Text('Email', style: TextStyle(fontWeight: FontWeight.bold))),
+      ],
     );
   }
 }
-
 class PatientTile extends StatelessWidget {
   final String name;
   final String email;
@@ -96,25 +131,39 @@ class PatientTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 16.0),
+      margin: const EdgeInsets.symmetric(vertical: 6.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Expanded(flex: 2, child: Text(name)),
-          Expanded(flex: 2, child: Text(email)),
+          Expanded(
+            flex: 1,
+            child: Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Text(
+              email,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-const TextStyle _headerStyle = TextStyle(
-  fontSize: 16,
-  fontWeight: FontWeight.bold,
-  color: Colors.black87,
-);
+
