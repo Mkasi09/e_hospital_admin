@@ -82,62 +82,6 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
     }
   }
 
-  Future<void> _showAddServiceDialog() async {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: const Text("Add New Service"),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'Service Name'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _priceController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Price (R)'),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text("Cancel"),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final name = _nameController.text.trim();
-                  final price =
-                      double.tryParse(_priceController.text.trim()) ?? 0;
-                  if (name.isNotEmpty && price > 0) {
-                    await FirebaseFirestore.instance.collection('services').add(
-                      {
-                        'name': name,
-                        'price': price,
-                        'createdAt': Timestamp.now(),
-                      },
-                    );
-                    Navigator.pop(context);
-                    _nameController.clear();
-                    _priceController.clear();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Service added successfully."),
-                      ),
-                    );
-                  }
-                },
-                child: const Text("Add Service"),
-              ),
-            ],
-          ),
-    );
-  }
-
   Widget _buildRequestList(String status) {
     return StreamBuilder<QuerySnapshot>(
       stream:
@@ -153,10 +97,23 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
         final docs = snapshot.data?.docs ?? [];
 
         if (docs.isEmpty) {
-          return Center(child: Text("No $status service requests."));
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[400]),
+                const SizedBox(height: 16),
+                Text(
+                  "No $status service requests",
+                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          );
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.all(16),
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
@@ -174,36 +131,114 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
                     };
 
                 return Card(
-                  margin: const EdgeInsets.all(12),
-                  child: ListTile(
-                    title: Text("Service: ${names['serviceName']}"),
-                    subtitle: Column(
+                  elevation: 2,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Patient: ${names['patientName']}"),
-                        Text("Doctor: ${names['doctorName']}"),
-                        Text("Price: R${data['price']}"),
+                        // Service Name
+                        Row(
+                          children: [
+                            const SizedBox(width: 2),
+                            Expanded(
+                              child: Text(
+                                names['serviceName']!,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Patient and Doctor Info
+                        _buildInfoRow(
+                          Icons.person_outline,
+                          "Patient: ${names['patientName']}",
+                        ),
+
+                        const SizedBox(height: 6),
+
+                        // Price
+                        _buildInfoRow(
+                          Icons.attach_money_outlined,
+                          "Price: R${data['price']?.toStringAsFixed(2) ?? '0.00'}",
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Request Date
                         if (data['timestamp'] != null)
-                          Text(
-                            "Requested on: ${DateFormat.yMd().add_jm().format(DateTime.fromMillisecondsSinceEpoch(data['timestamp']))}",
+                          Column(
+                            children: [
+                              _buildInfoRow(
+                                Icons.calendar_today_outlined,
+                                "Requested: ${DateFormat('MMM dd, yyyy - hh:mm a').format(DateTime.fromMillisecondsSinceEpoch(data['timestamp']))}",
+                              ),
+                              const SizedBox(height: 6),
+                            ],
                           ),
+
+                        // Scheduled Date (only for approved)
                         if (status == 'approved' &&
                             data['scheduledDate'] != null)
-                          Text(
-                            "Scheduled for: ${DateFormat.yMd().format(DateTime.parse(data['scheduledDate']))}",
+                          _buildInfoRow(
+                            Icons.schedule_outlined,
+                            "Scheduled: ${DateFormat('MMM dd, yyyy').format(DateTime.parse(data['scheduledDate']))}",
+                          ),
+
+                        const SizedBox(height: 12),
+
+                        // Action Button
+                        if (status == 'pending')
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _approveRequest(context, doc),
+                              icon: const Icon(Icons.check, size: 20),
+                              label: const Text("Approve & Schedule"),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green[50],
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.green[100]!),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  color: Colors.green[600],
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "Approved",
+                                  style: TextStyle(
+                                    color: Colors.green[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                       ],
                     ),
-                    trailing:
-                        status == 'pending'
-                            ? ElevatedButton(
-                              onPressed: () => _approveRequest(context, doc),
-                              child: const Text("Approve & Schedule"),
-                            )
-                            : const Icon(
-                              Icons.check_circle,
-                              color: Colors.green,
-                            ),
                   ),
                 );
               },
@@ -214,6 +249,22 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
     );
   }
 
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -221,26 +272,40 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
         title: const Text("Service Requests Management"),
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [Tab(text: "Pending"), Tab(text: "Approved")],
+          indicatorColor: Colors.white,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+          labelColor: Colors.white, // text color when selected
+          unselectedLabelColor: Colors.black, // text color when unselected
+          tabs: const [
+            Tab(icon: Icon(Icons.pending_actions_outlined), text: "Pending"),
+            Tab(icon: Icon(Icons.verified_outlined), text: "Approved"),
+          ],
         ),
         actions: [
-          TextButton.icon(
-            label: const Text('View/Add Services'),
-            icon: const Icon(Icons.keyboard_arrow_right),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AvailableServicesScreen(),
-                ),
-              );
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AvailableServicesScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.medical_services_outlined),
+              label: const Text('Services'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Theme.of(context).primaryColor,
+              ),
+            ),
           ),
         ],
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [_buildRequestList('pending'), _buildRequestList('approved'), ],
+        children: [_buildRequestList('pending'), _buildRequestList('approved')],
       ),
     );
   }

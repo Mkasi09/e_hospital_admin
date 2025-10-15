@@ -27,7 +27,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget build(BuildContext context) {
     final List<Widget> pages = [
       AdminHomeScreen(onNavigate: handleNavigation),
-      const AppointmentsScreen(),
+      AppointmentsScreen(),
       const PatientsScreen(),
       const DoctorsScreen(),
       const ServiceRequestsScreen(),
@@ -39,12 +39,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
       appBar: AppBar(
         title: Row(
           children: [
-            Image.asset('assets/logo.png', height: 60),
+            Image.asset('assets/logo.png', height: 90),
             const SizedBox(width: 8),
-            const Text('eHospital Admin Dashboard'),
+            const Text(
+              'eHospital Admin Dashboard',
+              style: TextStyle(fontSize: 32),
+            ),
           ],
         ),
-        backgroundColor: Colors.blueAccent,
+        backgroundColor: Color(0xFF00796B),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
