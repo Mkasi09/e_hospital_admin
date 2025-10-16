@@ -3,6 +3,7 @@ import 'package:e_hospotal_admin/screens/dashboard/service_requests/service_requ
 import 'package:e_hospotal_admin/screens/dashboard/service_requests/services.dart';
 import 'package:flutter/material.dart';
 import 'appointments/appointments_management.dart';
+import 'bills/bills_management.dart';
 import 'doctors/doctors_management.dart';
 import 'home/home_screen.dart';
 import 'patients/patients_manageent.dart';
@@ -32,7 +33,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
       const DoctorsScreen(),
       const ServiceRequestsScreen(),
       const AvailableServicesScreen(),
+      const BillsManagementScreen(),
       const ReportsScreen(),
+
     ];
 
     return Scaffold(
@@ -87,6 +90,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
               NavigationRailDestination(
                 icon: Icon(Icons.design_services),
                 label: Text('Services'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.money),
+                label: Text('Bills'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.analytics),

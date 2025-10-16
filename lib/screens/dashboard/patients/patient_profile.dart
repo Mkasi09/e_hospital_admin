@@ -397,10 +397,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: const Text('Reactivate', style: TextStyle(color: Colors.green)),
             ),
           ],
-          TextButton(
-            onPressed: () => _showDeleteAccountDialog(),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
+
         ],
       ),
     );
