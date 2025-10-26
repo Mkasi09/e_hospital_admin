@@ -154,10 +154,11 @@ class PatientTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ProfileScreen(patientId: patientId, isAdminView: true,),
+        showDialog(
+          context: context,
+          builder: (context) => ProfileScreen(
+            patientId: patientId,
+            isAdminView: true, // or false
           ),
         );
       },

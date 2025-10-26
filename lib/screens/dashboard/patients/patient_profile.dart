@@ -6,15 +6,16 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'dart:async';
 
 class ProfileScreen extends StatefulWidget {
   final String patientId;
-  final bool isAdminView; // Add this to identify admin access
+  final bool isAdminView;
 
   const ProfileScreen({
     super.key,
     required this.patientId,
-    this.isAdminView = false, // Default to false
+    this.isAdminView = false,
   });
 
   @override
@@ -52,14 +53,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
   DateTime? suspensionEndDate;
   String suspensionReason = '';
 
+  // Get patient files collection reference
+  CollectionReference get patientFilesCollection =>
+      FirebaseFirestore.instance.collection('patient_files');
+
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _setupAutomaticStatusChecks();
+  }
+
+  void _setupAutomaticStatusChecks() {
+    Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) {
+        checkAndReactivateSuspendedAccounts();
+        _loadUserData();
+      }
+    });
+  }
+
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+
+    final doc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.patientId)
+        .get();
+
+    if (doc.exists) {
+      final data = doc.data()!;
+      final addressData = data['address'] as Map<String, dynamic>?;
+      final medicalData = data['medicalInfo'] as Map<String, dynamic>? ?? {};
+      final statusData = data['accountStatus'] as Map<String, dynamic>? ?? {};
+
+      setState(() {
+        fullName = data['fullName'] ?? data['name'] ?? '';
+        email = data['email'] ?? '';
+        profilePicture = data['profilePicture'];
+        role = data['role'] ?? '';
+        phone = data['phone'] ?? '';
+        id = data['id'] ?? '';
+        gender = data['gender'] ?? '';
+        dob = _parseDobFromId(id);
+
+        nextOfKin = data['nextOfKin'] ?? '';
+        nextOfKinPhone = data['nextOfKinPhone'] ?? '';
+
+        address = addressData != null
+            ? '${addressData['street'] ?? ''}, ${addressData['city'] ?? ''}, ${addressData['province'] ?? ''}, ${addressData['postalCode'] ?? ''}, ${addressData['country'] ?? ''}'
+            : '';
+
+        bloodGroup = medicalData['bloodGroup'] ?? '';
+        allergies = medicalData['allergies'] ?? '';
+        chronicConditions = medicalData['chronicConditions'] ?? '';
+        medications = medicalData['medications'] ?? '';
+        primaryDoctor = medicalData['primaryDoctor'] ?? '';
+
+        specialty = data['specialty'] ?? '';
+        hospital = data['hospitalName'] ?? '';
+        licenseNumber = data['licenseNumber'] ?? '';
+
+        // Load account status
+        accountStatus = statusData['status'] ?? 'active';
+        suspensionReason = statusData['suspensionReason'] ?? '';
+        if (statusData['suspensionEndDate'] != null) {
+          suspensionEndDate = (statusData['suspensionEndDate'] as Timestamp).toDate();
+        }
+
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _pickAndUploadImage() async {
-    if (!widget.isAdminView) return; // Only allow if not admin view
+    if (!widget.isAdminView) return;
 
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
@@ -107,68 +177,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _loadUserData() async {
-    setState(() => _isLoading = true);
-
-    print('Loading data for patientId: ${widget.patientId}');
-
-    final doc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.patientId)
-        .get();
-
-    print('Document exists: ${doc.exists}');
-
-    if (doc.exists) {
-      final data = doc.data()!;
-      final addressData = data['address'] as Map<String, dynamic>?;
-      final medicalData = data['medicalInfo'] as Map<String, dynamic>? ?? {};
-      final statusData = data['accountStatus'] as Map<String, dynamic>? ?? {};
-
-      setState(() {
-        fullName = data['fullName'] ?? data['name'] ?? '';
-        email = data['email'] ?? '';
-        profilePicture = data['profilePicture'];
-        role = data['role'] ?? '';
-        phone = data['phone'] ?? '';
-        id = data['id'] ?? '';
-        gender = data['gender'] ?? '';
-        dob = _parseDobFromId(id);
-
-        nextOfKin = data['nextOfKin'] ?? '';
-        nextOfKinPhone = data['nextOfKinPhone'] ?? '';
-
-        address = addressData != null
-            ? '${addressData['street'] ?? ''}, ${addressData['city'] ?? ''}, ${addressData['province'] ?? ''}, ${addressData['postalCode'] ?? ''}, ${addressData['country'] ?? ''}'
-            : '';
-
-        bloodGroup = medicalData['bloodGroup'] ?? '';
-        allergies = medicalData['allergies'] ?? '';
-        chronicConditions = medicalData['chronicConditions'] ?? '';
-        medications = medicalData['medications'] ?? '';
-        primaryDoctor = medicalData['primaryDoctor'] ?? '';
-
-        specialty = data['specialty'] ?? '';
-        hospital = data['hospitalName'] ?? '';
-        licenseNumber = data['licenseNumber'] ?? '';
-
-        // Load account status
-        accountStatus = statusData['status'] ?? 'active';
-        suspensionReason = statusData['suspensionReason'] ?? '';
-        if (statusData['suspensionEndDate'] != null) {
-          suspensionEndDate = (statusData['suspensionEndDate'] as Timestamp).toDate();
-        }
-
-        _isLoading = false;
-      });
-
-      print('Data loaded successfully for: $fullName');
-    } else {
-      print('Document does not exist for patientId: ${widget.patientId}');
-      setState(() => _isLoading = false);
-    }
-  }
-
   String _parseDobFromId(String idNumber) {
     if (idNumber.length < 6) return '';
 
@@ -182,7 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final fullYear = century + year;
 
       final date = DateTime(fullYear, month, day);
-      return "${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}";
+      return DateFormat('dd-MM-yyyy').format(date);
     } catch (e) {
       return '';
     }
@@ -347,58 +355,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _showAccountManagementDialog() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'Manage Account',
-          style: TextStyle(color: Color(0xFF00796B)),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Manage account for: $fullName',
-              style: const TextStyle(fontSize: 16),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text(
+              'Manage Account',
+              style: TextStyle(color: Color(0xFF00796B)),
             ),
-            const SizedBox(height: 16),
-            _infoRow('Current Status', _getStatusText()),
-            if (suspensionEndDate != null)
-              _infoRow('Suspension Ends', DateFormat('yyyy-MM-dd – HH:mm').format(suspensionEndDate!)),
-            if (suspensionReason.isNotEmpty)
-              _infoRow('Suspension Reason', suspensionReason),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          if (accountStatus == 'active') ...[
-            TextButton(
-              onPressed: () => _showSuspendAccountDialog(),
-              child: const Text('Suspend', style: TextStyle(color: Colors.orange)),
-            ),
-            TextButton(
-              onPressed: () => _showBanAccountDialog(),
-              child: const Text('Ban', style: TextStyle(color: Colors.red)),
-            ),
-          ] else if (accountStatus == 'suspended') ...[
-            TextButton(
-              onPressed: _reactivateAccount,
-              child: const Text('Reactivate', style: TextStyle(color: Colors.green)),
-            ),
-            TextButton(
-              onPressed: () => _showBanAccountDialog(),
-              child: const Text('Ban', style: TextStyle(color: Colors.red)),
-            ),
-          ] else if (accountStatus == 'banned') ...[
-            TextButton(
-              onPressed: _reactivateAccount,
-              child: const Text('Reactivate', style: TextStyle(color: Colors.green)),
-            ),
-          ],
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Manage account for: $fullName',
+                  style: const TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                _infoRow('Current Status', _getStatusText()),
+                if (suspensionEndDate != null)
+                  _infoRow('Suspension Ends', DateFormat('yyyy-MM-dd – HH:mm').format(suspensionEndDate!)),
+                if (suspensionReason.isNotEmpty)
+                  _infoRow('Suspension Reason', suspensionReason),
 
-        ],
+                if (accountStatus == 'banned')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'This account is permanently banned.',
+                      style: TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              if (widget.isAdminView)
+                TextButton(
+                  onPressed: _showDeleteAccountDialog,
+                  child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                ),
+              if (accountStatus == 'active') ...[
+                TextButton(
+                  onPressed: () => _showSuspendAccountDialog(),
+                  child: const Text('Suspend', style: TextStyle(color: Colors.orange)),
+                ),
+                TextButton(
+                  onPressed: () => _showBanAccountDialog(),
+                  child: const Text('Ban', style: TextStyle(color: Colors.red)),
+                ),
+              ] else if (accountStatus == 'suspended') ...[
+                TextButton(
+                  onPressed: _reactivateAccount,
+                  child: const Text('Reactivate', style: TextStyle(color: Colors.green)),
+                ),
+                TextButton(
+                  onPressed: () => _showBanAccountDialog(),
+                  child: const Text('Ban', style: TextStyle(color: Colors.red)),
+                ),
+              ] else if (accountStatus == 'banned') ...[
+                TextButton(
+                  onPressed: _reactivateAccount,
+                  child: const Text('Reactivate', style: TextStyle(color: Colors.green)),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -522,7 +547,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Add this function to your admin utilities or call it periodically
   Future<void> checkAndReactivateSuspendedAccounts() async {
     final now = Timestamp.now();
     final suspendedUsers = await FirebaseFirestore.instance
@@ -655,6 +679,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _deletePatientFile(String docId) async {
+    try {
+      await patientFilesCollection.doc(docId).delete();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Document deleted successfully')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete document')),
+      );
+    }
+  }
+
   String _getStatusText() {
     switch (accountStatus) {
       case 'suspended':
@@ -702,289 +739,631 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget buildVerifiedFileCard({required String title, required String date}) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: ListTile(
+        leading: const Icon(Icons.verified, color: Colors.green),
+        title: Text(title),
+        subtitle: Text('Uploaded on: $date'),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      ),
+    );
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
     final isDoctor = role == 'doctor';
 
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFE0F2F1),
-        appBar: AppBar(
-          title: Text(
-            widget.isAdminView ? 'Patient Profile (Admin)' : 'Patient Profile',
-            style: const TextStyle(color: Colors.white),
-          ),
-          backgroundColor: const Color(0xFF00796B),
-          centerTitle: true,
-          elevation: 1,
-          iconTheme: const IconThemeData(color: Colors.white),
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.all(20),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9, maxWidth: MediaQuery.of(context).size.height * 0.9),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
         ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Color(0xFF00796B)),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFE0F2F1),
-      appBar: AppBar(
-        title: Text(
-          widget.isAdminView ? 'Patient Profile (Admin)' : 'Patient Profile',
-          style: const TextStyle(color: Colors.white),
-        ),
-        backgroundColor: const Color(0xFF00796B),
-        centerTitle: true,
-        elevation: 1,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (widget.isAdminView)
-            IconButton(
-              icon: const Icon(Icons.admin_panel_settings, color: Colors.white),
-              onPressed: _showAccountManagementDialog,
-              tooltip: 'Manage Account',
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.edit, color: Colors.white),
-              onPressed: _showEditProfileDialog,
-              tooltip: 'Edit Profile',
-            ),
-        ],
+        child: _isLoading ? _buildLoadingState() : _buildContent(isDoctor),
       ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-        children: [
-          // Account Status Banner (only show if not active)
-          if (accountStatus != 'active' && widget.isAdminView)
-            Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: _getStatusColor().withOpacity(0.1),
-                border: Border.all(color: _getStatusColor()),
-                borderRadius: BorderRadius.circular(12),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Color(0xFF00796B)),
+            SizedBox(height: 20),
+            Text(
+              'Loading Profile...',
+              style: TextStyle(
+                fontSize: 16,
+                color: Color(0xFF00796B),
+                fontWeight: FontWeight.w500,
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.warning, color: _getStatusColor()),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(bool isDoctor) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header
+        Container(
+          padding: EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Color(0xFF00796B),
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.isAdminView ? 'Patient Profile (Admin)' : 'Patient Profile',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      fullName,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, color: Colors.white, size: 24),
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        ),
+
+        // Content
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              children: [
+                // Account Status Banner
+                if (accountStatus != 'active' && widget.isAdminView)
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16),
+                    margin: EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: _getStatusColor().withOpacity(0.1),
+                      border: Border.all(color: _getStatusColor()),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
                       children: [
-                        Text(
-                          'Account ${_getStatusText().toUpperCase()}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: _getStatusColor(),
-                            fontSize: 16,
+                        Icon(Icons.warning, color: _getStatusColor()),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Account ${_getStatusText().toUpperCase()}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _getStatusColor(),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              if (suspensionEndDate != null)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Until: ${DateFormat('yyyy-MM-dd – HH:mm').format(suspensionEndDate!)}',
+                                    style: TextStyle(
+                                      color: _getStatusColor(),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              if (suspensionReason.isNotEmpty)
+                                Padding(
+                                  padding: EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Reason: $suspensionReason',
+                                    style: TextStyle(
+                                      color: _getStatusColor(),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        if (suspensionEndDate != null)
-                          Text(
-                            'Until: ${DateFormat('yyyy-MM-dd – HH:mm').format(suspensionEndDate!)}',
-                            style: TextStyle(color: _getStatusColor()),
-                          ),
-                        if (suspensionReason.isNotEmpty)
-                          Text(
-                            'Reason: $suspensionReason',
-                            style: TextStyle(color: _getStatusColor()),
-                          ),
                       ],
                     ),
                   ),
-                ],
-              ),
-            ),
 
-          Center(
-            child: Stack(
-              children: [
-                CircleAvatar(
-                  radius: 60,
-                  backgroundColor: const Color(0xFF00796B).withOpacity(0.1),
-                  backgroundImage:
-                  profilePicture != null && profilePicture!.isNotEmpty
-                      ? NetworkImage(profilePicture!)
-                      : null,
-                  child: (profilePicture == null || profilePicture!.isEmpty)
-                      ? Text(
-                    fullName.isNotEmpty ? fullName[0].toUpperCase() : '',
-                    style: const TextStyle(
-                      fontSize: 40,
-                      color: Color(0xFF00796B),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                      : null,
-                ),
-                if (!widget.isAdminView) // Only show camera for non-admin
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: GestureDetector(
-                      onTap: _pickAndUploadImage,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00796B),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                // Profile Header
+                Center(
+                  child: Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Color(0xFF00796B).withOpacity(0.1),
+                        backgroundImage: profilePicture != null && profilePicture!.isNotEmpty
+                            ? NetworkImage(profilePicture!)
+                            : null,
+                        child: (profilePicture == null || profilePicture!.isEmpty)
+                            ? Text(
+                          fullName.isNotEmpty ? fullName[0].toUpperCase() : '',
+                          style: TextStyle(
+                            fontSize: 32,
+                            color: Color(0xFF00796B),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                            : null,
+                      ),
+                      if (!widget.isAdminView)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _pickAndUploadImage,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Color(0xFF00796B),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              padding: EdgeInsets.all(6),
+                              child: Icon(
+                                Icons.camera_alt,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
                         ),
-                        padding: const EdgeInsets.all(6),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          size: 20,
-                          color: Colors.white,
+                    ],
+                  ),
+                ),
+
+                SizedBox(height: 16),
+                Center(
+                  child: Text(
+                    fullName,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF00796B),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Center(
+                  child: Text(
+                    email,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+
+                SizedBox(height: 24),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    if (widget.isAdminView)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _showAccountManagementDialog,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Color(0xFF00796B),
+                            side: BorderSide(color: Color(0xFF00796B)),
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: Icon(Icons.admin_panel_settings, size: 18),
+                          label: Text('Manage Account'),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _showEditProfileDialog,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Color(0xFF00796B),
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: Icon(Icons.edit, size: 18, color: Colors.white),
+                          label: Text('Edit Profile', style: TextStyle(color: Colors.white)),
                         ),
                       ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              fullName,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF00796B),
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Center(
-            child: Text(
-              email,
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          // Personal Details Container
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF00796B).withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
+                  ],
                 ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Personal Details',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00796B),
-                  ),
+
+                SizedBox(height: 24),
+
+                // Personal Details
+                _buildSection(
+                  title: 'Personal Details',
+                  children: [
+                    _infoRow('ID Number', id),
+                    _infoRow('Gender', gender),
+                    _infoRow('Date of Birth', dob),
+                    _infoRow('Phone Number', phone),
+                    if (!isDoctor) ...[
+                      _infoRow(
+                        'Next of Kin',
+                        nextOfKin.isNotEmpty
+                            ? (nextOfKinPhone.isNotEmpty
+                            ? '$nextOfKin ($nextOfKinPhone)'
+                            : nextOfKin)
+                            : '',
+                      ),
+                      _infoRow('Address', address),
+                    ],
+                  ],
                 ),
-                const SizedBox(height: 16),
-                _infoRow('ID Number', id),
-                _infoRow('Gender', gender),
-                _infoRow('Date of Birth', dob),
-                _infoRow('Phone Number', phone),
-                if (!isDoctor) ...[
-                  _infoRow(
-                    'Next of Kin',
-                    nextOfKin.isNotEmpty
-                        ? (nextOfKinPhone.isNotEmpty
-                        ? '$nextOfKin ($nextOfKinPhone)'
-                        : nextOfKin)
-                        : '',
-                  ),
-                  _infoRow('Address', address),
-                ],
+
+                SizedBox(height: 20),
+
+                // Professional/Medical Info
+                _buildSection(
+                  title: isDoctor ? 'Professional Information' : 'Medical Information',
+                  children: [
+                    if (isDoctor) ...[
+                      _infoRow('Specialty', specialty),
+                      _infoRow('Hospital', hospital),
+                      _infoRow('License No.', licenseNumber),
+                    ] else ...[
+                      _infoRow('Blood Group', bloodGroup),
+                      _infoRow('Allergies', allergies),
+                      _infoRow('Chronic Conditions', chronicConditions),
+                      _infoRow('Medications', medications),
+                      _infoRow('Primary Doctor', primaryDoctor),
+                    ],
+                  ],
+                ),
+
+                SizedBox(height: 20),
+
+                // Files Section
+                _buildFilesSection(),
               ],
             ),
           ),
+        ),
+      ],
+    );
+  }
 
-          // Professional/Medical Info Container
-          Container(
-            margin: const EdgeInsets.only(top: 20),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF00796B).withOpacity(0.1),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isDoctor ? 'Professional Information' : 'Medical Information',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00796B),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (isDoctor) ...[
-                  _infoRow('Specialty', specialty),
-                  _infoRow('Hospital', hospital),
-                  _infoRow('License No.', licenseNumber),
-                ] else ...[
-                  _infoRow('Next of Kin', nextOfKin),
-                  _infoRow('Kin Phone', nextOfKinPhone),
-                  _infoRow('Blood Group', bloodGroup),
-                  _infoRow('Allergies', allergies),
-                  _infoRow('Chronic Conditions', chronicConditions),
-                  _infoRow('Medications', medications),
-                  _infoRow('Primary Doctor', primaryDoctor),
-                ],
-              ],
+  Widget _buildSection({required String title, required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF00796B),
             ),
           ),
-
-          const SizedBox(height: 40),
+          SizedBox(height: 16),
+          ...children,
         ],
       ),
     );
   }
 
+  Widget _buildFilesSection() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Documents & Files',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF00796B),
+            ),
+          ),
+          SizedBox(height: 16),
+
+          // Official Hospital Files
+          _buildFileSubsection(
+            title: 'Official Hospital Files',
+            stream: FirebaseFirestore.instance
+                .collection('doctor_uploaded_files')
+                .where('userId', isEqualTo: widget.patientId)
+                .orderBy('date', descending: true)
+                .snapshots(),
+            emptyMessage: 'No official files available.',
+          ),
+
+          SizedBox(height: 20),
+
+          // My Uploaded Documents
+          _buildFileSubsection(
+            title: 'Patient Uploaded Documents',
+            stream: patientFilesCollection
+                .where('userId', isEqualTo: widget.patientId)
+                .orderBy('date', descending: true)
+                .snapshots(),
+            emptyMessage: 'No documents uploaded yet.',
+            isPatientFiles: true,
+          ),
+
+          SizedBox(height: 20),
+
+          // Prescriptions
+          _buildFileSubsection(
+            title: 'Prescriptions',
+            stream: FirebaseFirestore.instance
+                .collection('prescriptions')
+                .where('userId', isEqualTo: widget.patientId)
+                .orderBy('date', descending: true)
+                .snapshots(),
+            emptyMessage: 'No prescriptions available.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFileSubsection({
+    required String title,
+    required Stream<QuerySnapshot> stream,
+    required String emptyMessage,
+    bool isPatientFiles = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot>(
+          stream: stream,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error loading files.', style: TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.data!.docs.isEmpty) {
+              return Container(
+                padding: EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Column(
+                  children: [
+                    Icon(Icons.folder_open, size: 40, color: Colors.grey.shade400),
+                    SizedBox(height: 8),
+                    Text(
+                      emptyMessage,
+                      style: TextStyle(color: Colors.grey.shade600),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              children: snapshot.data!.docs.map((doc) {
+                final data = doc.data()! as Map<String, dynamic>;
+                if (isPatientFiles) {
+                  return PatientFileCard(
+                    docId: doc.id,
+                    title: data['title'] ?? 'Untitled',
+                    date: (data['date'] as Timestamp).toDate(),
+                    status: data['status'] ?? 'pending',
+                    downloadUrl: data['downloadUrl'] ?? '',
+                    onDelete: () => _deletePatientFile(doc.id),
+                    content: null,
+                  );
+                } else {
+                  return buildVerifiedFileCard(
+                    title: data['title'] ?? 'Untitled',
+                    date: (data['date'] as Timestamp?)?.toDate() != null
+                        ? DateFormat('yyyy-MM-dd').format((data['date'] as Timestamp).toDate())
+                        : '',
+                  );
+                }
+              }).toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _infoRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 120,
+            width: 140,
             child: Text(
-              "$label: ",
-              style: const TextStyle(
+              "$label:",
+              style: TextStyle(
                 fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: Color(0xFF00796B),
+                fontSize: 14,
+                color: Colors.grey.shade700,
               ),
             ),
           ),
           Expanded(
             child: Text(
               value.isNotEmpty ? value : "Not provided",
-              style: TextStyle(fontSize: 15, color: Colors.grey.shade800),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade800,
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _infoRowDialog(String label, String value) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              "$label:",
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value.isNotEmpty ? value : "Not provided",
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// PatientFileCard widget (updated for better popup styling)
+class PatientFileCard extends StatelessWidget {
+  final String docId;
+  final String title;
+  final DateTime date;
+  final String status;
+  final String downloadUrl;
+  final Function() onDelete;
+  final String? content;
+
+  const PatientFileCard({
+    super.key,
+    required this.docId,
+    required this.title,
+    required this.date,
+    required this.status,
+    required this.downloadUrl,
+    required this.onDelete,
+    this.content,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.symmetric(vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: Icon(
+          _getStatusIcon(),
+          color: _getStatusColor(),
+          size: 20,
+        ),
+        title: Text(
+          title,
+          style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+        ),
+        subtitle: Text(
+          'Uploaded: ${DateFormat('yyyy-MM-dd').format(date)}',
+          style: TextStyle(fontSize: 12),
+        ),
+        trailing: IconButton(
+          icon: Icon(Icons.delete, color: Colors.red, size: 18),
+          onPressed: onDelete,
+          padding: EdgeInsets.zero,
+          constraints: BoxConstraints(),
+        ),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  IconData _getStatusIcon() {
+    switch (status) {
+      case 'verified':
+        return Icons.verified;
+      case 'rejected':
+        return Icons.cancel;
+      default:
+        return Icons.pending;
+    }
+  }
+
+  Color _getStatusColor() {
+    switch (status) {
+      case 'verified':
+        return Colors.green;
+      case 'rejected':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
   }
 }

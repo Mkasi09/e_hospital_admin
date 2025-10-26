@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
+import 'new_appointment.dart';
+
 class AppointmentsScreen extends StatefulWidget {
   const AppointmentsScreen({super.key});
 
@@ -456,6 +458,11 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       appBar: AppBar(
         title: const Text('Appointments Management'),
         actions: [
+          IconButton(
+            icon: Icon(Icons.add),
+            onPressed: () => showAdminCreateAppointment(context),
+            tooltip: 'Create Appointment',
+          ),
           IconButton(
             icon: const Icon(Icons.filter_alt_outlined),
             onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),

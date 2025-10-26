@@ -346,7 +346,6 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
             stream: FirebaseFirestore.instance
                 .collection('service_requests')
                 .where('status', isEqualTo: status)
-                .orderBy('timestamp', descending: true)
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -606,7 +605,7 @@ class _ServiceRequestsScreenState extends State<ServiceRequestsScreen>
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w500),
+          labelStyle: const TextStyle(fontWeight: FontWeight.w500, color: Colors.white),
           tabs: const [
             Tab(icon: Icon(Icons.pending_actions_outlined), text: "Pending"),
             Tab(icon: Icon(Icons.verified_outlined), text: "Approved"),
