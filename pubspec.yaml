@@ -41,10 +41,13 @@ dependencies:
   lottie: ^3.3.1
   image_picker: ^1.0.4
   table_calendar: ^3.0.9
-  pdf: ^3.10.4
+  pdf: ^3.10.2
   printing: ^5.11.2
   path_provider: ^2.1.1
-  open_file: ^3.3.1
+  open_filex: ^4.7.0
+  share_plus: ^7.0.0
+
+
 
 
 
