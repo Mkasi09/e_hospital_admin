@@ -9,4 +9,5 @@ const FirebaseOptions webFirebaseOptions = FirebaseOptions(
   storageBucket: "e-hospitalinfor.firebasestorage.app",
   messagingSenderId: "271870584613",
   appId: "1:271870584613:web:416d59106431245b75dccc",
+  databaseURL: "https://e-hospitalinfor-default-rtdb.firebaseio.com",
 );

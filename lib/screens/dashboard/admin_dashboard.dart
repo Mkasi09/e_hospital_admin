@@ -1,3 +1,4 @@
+import 'package:e_hospotal_admin/screens/dashboard/chats/chats_management.dart';
 import 'package:e_hospotal_admin/screens/dashboard/reports/reports.dart';
 import 'package:e_hospotal_admin/screens/dashboard/service_requests/service_requests_management.dart';
 import 'package:e_hospotal_admin/screens/dashboard/service_requests/services.dart';
@@ -31,11 +32,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
       AppointmentsScreen(),
       const PatientsScreen(),
       const DoctorsScreen(),
+      const ChatsManagementScreen(),
       const ServiceRequestsScreen(),
       const AvailableServicesScreen(),
       const BillsManagementScreen(),
       const ReportsScreen(),
-
     ];
 
     return Scaffold(
@@ -82,6 +83,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
               NavigationRailDestination(
                 icon: Icon(Icons.medical_services),
                 label: Text('Doctors'),
+              ),
+              NavigationRailDestination(
+                icon: Icon(Icons.mark_unread_chat_alt),
+                label: Text('Chats'),
               ),
               NavigationRailDestination(
                 icon: Icon(Icons.assignment),
