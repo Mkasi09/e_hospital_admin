@@ -21,6 +21,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   List<String> doctors = [];
   Map<String, String> doctorIdMap = {}; // Map doctor names to their IDs
+  Map<String, Map<String, dynamic>> userCache = {}; // Cache for user data
 
   @override
   void initState() {
@@ -41,6 +42,93 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
       // Create mapping for doctor names to IDs
       doctorIdMap = {for (var doc in query.docs) doc['name'] as String: doc.id};
     });
+  }
+
+  // Fetch user data by ID
+  Future<Map<String, dynamic>?> _fetchUserData(String userId) async {
+    if (userCache.containsKey(userId)) {
+      return userCache[userId];
+    }
+
+    try {
+      final doc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userId)
+              .get();
+
+      if (doc.exists) {
+        final userData = doc.data()!;
+        userCache[userId] = userData;
+        return userData;
+      }
+    } catch (e) {
+      print('Error fetching user data: $e');
+    }
+    return null;
+  }
+
+  // Enhanced search function that checks user data
+  Future<bool> _matchesSearchQuery(Map<String, dynamic> data) async {
+    if (searchQuery.isEmpty) return true;
+
+    final query = searchQuery.toLowerCase().trim();
+
+    // Search in patient name
+    final patientName = (data['patientName'] ?? '').toString().toLowerCase();
+    if (patientName.contains(query)) {
+      return true;
+    }
+
+    // Search in doctor name
+    final doctorName = (data['doctor'] ?? '').toString().toLowerCase();
+    if (doctorName.contains(query)) {
+      return true;
+    }
+
+    // Search in patient user ID
+    final patientId = data['patientId'];
+    if (patientId != null && patientId.toString() == query) {
+      return true;
+    }
+
+    // Search in doctor user ID
+    final doctorId = data['doctorId'];
+    if (doctorId != null && doctorId.toString() == query) {
+      return true;
+    }
+
+    // Search in patient email from users collection
+    if (patientId != null) {
+      final patientData = await _fetchUserData(patientId);
+      if (patientData != null) {
+        final patientEmail =
+            (patientData['email'] ?? '').toString().toLowerCase();
+        if (patientEmail.contains(query)) {
+          return true;
+        }
+
+        // Also search in patient personal ID if exists in user data
+        final personalId = (patientData['personalId'] ?? '').toString();
+        if (personalId == query) {
+          return true;
+        }
+      }
+    }
+
+    // Search in doctor email from users collection
+    if (doctorId != null) {
+      final doctorData = await _fetchUserData(doctorId);
+      if (doctorData != null) {
+        final doctorEmail =
+            (doctorData['email'] ?? '').toString().toLowerCase();
+        if (doctorEmail.contains(query)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   void _updateStatus(
@@ -157,6 +245,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     final status = data['status'] ?? 'pending';
     final reason = data['reason'] ?? 'No reason provided';
     final hospital = data['hospital'] ?? 'Not specified';
+    final patientId = data['patientId'] ?? '';
+    final doctorId = data['doctorId'] ?? '';
 
     final dateTimestamp = data['date'];
     final date =
@@ -288,6 +378,45 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                 ],
               ],
             ),
+            if (patientId.isNotEmpty || doctorId.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                children: [
+                  if (patientId.isNotEmpty)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          size: 12,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          'Patient ID: $patientId',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (doctorId.isNotEmpty)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.medical_services_outlined,
+                          size: 12,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 2),
+                      ],
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
         trailing: PopupMenuButton<String>(
@@ -376,8 +505,9 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   _buildDetailRow('Hospital', hospital),
                   _buildDetailRow('Reason', reason),
                   if (patientId != null)
-                    _buildDetailRow('Patient ID', patientId),
-                  if (doctorId != null) _buildDetailRow('Doctor ID', doctorId),
+                    _buildDetailRow('Patient User ID', patientId),
+                  if (doctorId != null)
+                    _buildDetailRow('Doctor User ID', doctorId),
                 ],
               ),
             ),
@@ -398,7 +528,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 120,
             child: Text(
               '$label:',
               style: const TextStyle(fontWeight: FontWeight.bold),
@@ -517,7 +647,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
     }
   }
 
-  // Add this missing function
   void showAdminCreateAppointment(BuildContext context) {
     Navigator.push(
       context,
@@ -550,7 +679,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Appointments Management', // Fixed title
+                      'Appointments Management',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -558,7 +687,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
                     ),
                     SizedBox(height: 8),
                     Text(
-                      'Manage and track all patient appointments', // Fixed description
+                      'Manage and track all patient appointments',
                       style: TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   ],
@@ -575,7 +704,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
             // Search Bar
             TextField(
               decoration: InputDecoration(
-                hintText: 'Search by patient name...',
+                hintText: 'Search by name, user ID, or email...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -583,7 +712,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
               ),
               onChanged: (value) {
                 setState(() {
-                  searchQuery = value.toLowerCase();
+                  searchQuery = value;
                 });
               },
             ),
@@ -619,30 +748,30 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
 
                   final appointments = snapshot.data!.docs;
 
-                  // Filter by search query
-                  final filteredAppointments =
-                      appointments.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final patientName =
-                            (data['patientName'] ?? '')
-                                .toString()
-                                .toLowerCase();
-                        return searchQuery.isEmpty ||
-                            patientName.contains(searchQuery);
-                      }).toList();
+                  return FutureBuilder<List<DocumentSnapshot>>(
+                    future: _filterAppointments(appointments),
+                    builder: (context, filterSnapshot) {
+                      if (filterSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                  if (filteredAppointments.isEmpty) {
-                    return const Center(
-                      child: Text('No appointments match your search'),
-                    );
-                  }
+                      final filteredAppointments = filterSnapshot.data ?? [];
 
-                  return ListView.builder(
-                    itemCount: filteredAppointments.length,
-                    itemBuilder: (context, index) {
-                      final doc = filteredAppointments[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      return _buildAppointmentCard(doc, data);
+                      if (filteredAppointments.isEmpty) {
+                        return const Center(
+                          child: Text('No appointments match your search'),
+                        );
+                      }
+
+                      return ListView.builder(
+                        itemCount: filteredAppointments.length,
+                        itemBuilder: (context, index) {
+                          final doc = filteredAppointments[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          return _buildAppointmentCard(doc, data);
+                        },
+                      );
                     },
                   );
                 },
@@ -652,6 +781,22 @@ class _AppointmentsScreenState extends State<AppointmentsScreen> {
         ),
       ),
     );
+  }
+
+  // Helper method to filter appointments asynchronously
+  Future<List<DocumentSnapshot>> _filterAppointments(
+    List<DocumentSnapshot> appointments,
+  ) async {
+    if (searchQuery.isEmpty) return appointments;
+
+    final filtered = <DocumentSnapshot>[];
+    for (final doc in appointments) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (await _matchesSearchQuery(data)) {
+        filtered.add(doc);
+      }
+    }
+    return filtered;
   }
 
   Widget _buildFiltersDrawer() {

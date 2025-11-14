@@ -334,7 +334,7 @@ class _ChatsManagementScreenState extends State<ChatsManagementScreen> {
                         int.parse(value['resolvedAt'].toString()),
                       )
                       : null,
-              messageId: '',
+              messageId: value['messageId']?.toString() ?? '',
             ),
           );
         }
@@ -672,7 +672,13 @@ class _ChatsManagementScreenState extends State<ChatsManagementScreen> {
   void _showReportsOverview(ChatRoom chatRoom, BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => ReportsOverviewDialog(chatRoom: chatRoom),
+      builder:
+          (context) => ReportsOverviewDialog(
+            chatRoom: chatRoom,
+            onReportsUpdated: () {
+              setState(() {}); // Refresh the UI
+            },
+          ),
     );
   }
 
@@ -740,7 +746,7 @@ class ChatMessage {
 
 class ChatReport {
   final String id;
-  final String messageId; // Add this line
+  final String messageId;
   final String reportedBy;
   final String reportedById;
   final String reason;
@@ -752,7 +758,7 @@ class ChatReport {
 
   ChatReport({
     required this.id,
-    required this.messageId, // Add this parameter
+    required this.messageId,
     required this.reportedBy,
     required this.reportedById,
     required this.reason,
@@ -765,10 +771,22 @@ class ChatReport {
 }
 
 // Reports Overview Dialog
-class ReportsOverviewDialog extends StatelessWidget {
+class ReportsOverviewDialog extends StatefulWidget {
   final ChatRoom chatRoom;
+  final VoidCallback? onReportsUpdated;
 
-  const ReportsOverviewDialog({super.key, required this.chatRoom});
+  const ReportsOverviewDialog({
+    super.key,
+    required this.chatRoom,
+    this.onReportsUpdated,
+  });
+
+  @override
+  State<ReportsOverviewDialog> createState() => _ReportsOverviewDialogState();
+}
+
+class _ReportsOverviewDialogState extends State<ReportsOverviewDialog> {
+  final DatabaseReference _databaseRef = FirebaseDatabase.instance.ref();
 
   @override
   Widget build(BuildContext context) {
@@ -798,7 +816,7 @@ class ReportsOverviewDialog extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Chat between ${chatRoom.patientName} and Dr. ${chatRoom.doctorName}',
+              'Chat between ${widget.chatRoom.patientName} and Dr. ${widget.chatRoom.doctorName}',
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 24),
@@ -817,9 +835,9 @@ class ReportsOverviewDialog extends StatelessWidget {
             Expanded(
               child: ListView.builder(
                 shrinkWrap: true,
-                itemCount: chatRoom.reports.length,
+                itemCount: widget.chatRoom.reports.length,
                 itemBuilder: (context, index) {
-                  return _buildReportCard(chatRoom.reports[index]);
+                  return _buildReportCard(widget.chatRoom.reports[index]);
                 },
               ),
             ),
@@ -829,11 +847,8 @@ class ReportsOverviewDialog extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder:
-                            (context) => ChatPopupScreen(chatRoom: chatRoom),
-                      );
+                      Navigator.pop(context); // Close current dialog
+                      _openChatPopup(widget.chatRoom, context);
                     },
                     child: const Text('View Chat'),
                   ),
@@ -845,7 +860,6 @@ class ReportsOverviewDialog extends StatelessWidget {
                       backgroundColor: Colors.red,
                     ),
                     onPressed: () {
-                      // Take action on reported chat
                       _showActionMenu(context);
                     },
                     child: const Text(
@@ -863,17 +877,18 @@ class ReportsOverviewDialog extends StatelessWidget {
   }
 
   Widget _buildReportsSummary() {
-    final pending = chatRoom.reports.where((r) => r.status == 'pending').length;
+    final pending =
+        widget.chatRoom.reports.where((r) => r.status == 'pending').length;
     final resolved =
-        chatRoom.reports.where((r) => r.status == 'resolved').length;
+        widget.chatRoom.reports.where((r) => r.status == 'resolved').length;
     final dismissed =
-        chatRoom.reports.where((r) => r.status == 'dismissed').length;
+        widget.chatRoom.reports.where((r) => r.status == 'dismissed').length;
 
     return Row(
       children: [
         _buildSummaryItem(
           'Total',
-          chatRoom.reports.length.toString(),
+          widget.chatRoom.reports.length.toString(),
           Colors.grey,
         ),
         _buildSummaryItem('Pending', pending.toString(), Colors.orange),
@@ -1039,9 +1054,8 @@ class ReportsOverviewDialog extends StatelessWidget {
     );
   }
 
-  void _resolveAllReports(BuildContext context) {
-    // Implement resolve all reports logic
-    showDialog(
+  Future<void> _resolveAllReports(BuildContext context) async {
+    final result = await showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
@@ -1051,37 +1065,257 @@ class ReportsOverviewDialog extends StatelessWidget {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(context, false),
                 child: const Text('Cancel'),
               ),
               TextButton(
-                onPressed: () {
-                  // Update reports status in database
-                  Navigator.pop(context);
-                  Navigator.pop(context); // Close reports overview
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('All reports marked as resolved'),
-                    ),
-                  );
-                },
+                onPressed: () => Navigator.pop(context, true),
                 child: const Text('Resolve All'),
               ),
             ],
           ),
     );
+
+    if (result == true) {
+      try {
+        // Update all reports status to resolved
+        for (final report in widget.chatRoom.reports) {
+          await _databaseRef
+              .child('chats/${widget.chatRoom.id}/reports/${report.id}')
+              .update({
+                'status': 'resolved',
+                'resolvedBy': 'Admin',
+                'resolvedAt': DateTime.now().millisecondsSinceEpoch,
+              });
+        }
+
+        if (mounted) {
+          Navigator.pop(context); // Close reports overview
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('All reports marked as resolved'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          widget.onReportsUpdated?.call();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error resolving reports: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
-  void _dismissAllReports(BuildContext context) {
-    // Similar implementation to _resolveAllReports
+  Future<void> _dismissAllReports(BuildContext context) async {
+    final result = await showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Dismiss All Reports'),
+            content: const Text(
+              'Are you sure you want to dismiss all reports for this chat?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Dismiss All'),
+              ),
+            ],
+          ),
+    );
+
+    if (result == true) {
+      try {
+        // Update all reports status to dismissed
+        for (final report in widget.chatRoom.reports) {
+          await _databaseRef
+              .child('chats/${widget.chatRoom.id}/reports/${report.id}')
+              .update({
+                'status': 'dismissed',
+                'resolvedBy': 'Admin',
+                'resolvedAt': DateTime.now().millisecondsSinceEpoch,
+              });
+        }
+
+        if (mounted) {
+          Navigator.pop(context); // Close reports overview
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('All reports dismissed'),
+              backgroundColor: Colors.blue,
+            ),
+          );
+          widget.onReportsUpdated?.call();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error dismissing reports: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
-  void _warnParticipants(BuildContext context) {
-    // Implement warning logic
+  Future<void> _warnParticipants(BuildContext context) async {
+    final messageController = TextEditingController();
+
+    final result = await showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Warn Participants'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Send a warning message to both doctor and patient:',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: messageController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter warning message...',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, null),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, messageController.text),
+                child: const Text('Send Warning'),
+              ),
+            ],
+          ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        // Create a warning message in the chat
+        final warningMessage = {
+          'text': '⚠️ ADMIN WARNING: $result',
+          'senderId': 'admin',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'read': false,
+          'type': 'admin_warning',
+        };
+
+        final newMessageRef =
+            _databaseRef.child('chats/${widget.chatRoom.id}/messages').push();
+        await newMessageRef.set(warningMessage);
+
+        // Update last updated timestamp
+        await _databaseRef
+            .child('chats/${widget.chatRoom.id}/meta/lastUpdated')
+            .set(DateTime.now().millisecondsSinceEpoch);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Warning sent to participants'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error sending warning: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 
-  void _suspendChat(BuildContext context) {
-    // Implement chat suspension logic
+  Future<void> _suspendChat(BuildContext context) async {
+    final result = await showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Suspend Chat'),
+            content: const Text(
+              'Are you sure you want to temporarily suspend this chat? '
+              'Participants will not be able to send messages until the chat is restored.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Suspend Chat'),
+              ),
+            ],
+          ),
+    );
+
+    if (result == true) {
+      try {
+        // Add suspension flag to chat meta
+        await _databaseRef.child('chats/${widget.chatRoom.id}/meta').update({
+          'suspended': true,
+          'suspendedAt': DateTime.now().millisecondsSinceEpoch,
+          'suspendedBy': 'Admin',
+        });
+
+        // Create suspension notification
+        final suspensionMessage = {
+          'text':
+              '🚫 CHAT SUSPENDED: This chat has been temporarily suspended by admin for review.',
+          'senderId': 'admin',
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'read': false,
+          'type': 'suspension_notice',
+        };
+
+        final newMessageRef =
+            _databaseRef.child('chats/${widget.chatRoom.id}/messages').push();
+        await newMessageRef.set(suspensionMessage);
+
+        if (mounted) {
+          Navigator.pop(context); // Close reports overview
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Chat suspended successfully'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          widget.onReportsUpdated?.call();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error suspending chat: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
   }
 }
 
